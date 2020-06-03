@@ -4,6 +4,7 @@ import gym
 import argparse
 import os
 
+import memory
 import utils
 import TD3
 import OurDDPG
@@ -49,7 +50,13 @@ if __name__ == "__main__":
 	parser.add_argument("--noise_clip", default=0.5)                # Range to clip target policy noise
 	parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
 	parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
-	parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
+	parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn"t load, "default" uses file_name
+	# Prioritized Experience Replay args
+	parser.add_argument("--per", type=bool, default=False, metavar="Prioritized Experience Replay", help="Use experience replay memory or not")
+	parser.add_argument("--memory_capacity", type=int, default=int(1e6), metavar="CAPACITY", help="Experience replay memory capacity")
+	parser.add_argument("--priority_exponent", type=float, default=0.5, metavar="ω", help="Prioritised experience replay exponent (originally denoted α)")
+	parser.add_argument("--priority_weight", type=float, default=0.4, metavar="β", help="Initial prioritised experience replay importance sampling weight")
+	parser.add_argument("--absolute_error_upper", type=float, default=1., help="Clipped abs error")
 	args = parser.parse_args()
 
 	file_name = f"{args.policy}_{args.env}_{args.seed}"
@@ -85,6 +92,7 @@ if __name__ == "__main__":
 	# Initialize policy
 	if args.policy == "TD3":
 		# Target policy smoothing is scaled wrt the action scale
+		kwargs["per"] = args.per
 		kwargs["policy_noise"] = args.policy_noise * max_action
 		kwargs["noise_clip"] = args.noise_clip * max_action
 		kwargs["policy_freq"] = args.policy_freq
@@ -98,7 +106,12 @@ if __name__ == "__main__":
 		policy_file = file_name if args.load_model == "default" else args.load_model
 		policy.load(f"./models/{policy_file}")
 
-	replay_buffer = utils.ReplayBuffer(state_dim, action_dim)
+	if args.per:
+		replay_buffer = memory.ReplayMemory(args, args.memory_capacity)
+	else:
+		replay_buffer = utils.ReplayBuffer(state_dim, action_dim)
+
+	priority_weight_increase = (1 - args.priority_weight) / (args.max_timesteps - args.start_timesteps)
 	
 	# Evaluate untrained policy
 	evaluations = [eval_policy(policy, args.env, args.seed)]
@@ -126,13 +139,21 @@ if __name__ == "__main__":
 		done_bool = float(done) if episode_timesteps < env._max_episode_steps else 0
 
 		# Store data in replay buffer
-		replay_buffer.add(state, action, next_state, reward, done_bool)
+		if args.per:
+			replay_buffer.append(state, action, reward, next_state, done_bool)
+		else:
+			replay_buffer.add(state, action, next_state, reward, done_bool)
+		
 
 		state = next_state
 		episode_reward += reward
 
 		# Train agent after collecting sufficient data
 		if t >= args.start_timesteps:
+			if args.per:
+				 # Anneal importance sampling weight β to 1
+				replay_buffer.priority_weight = min(replay_buffer.priority_weight + priority_weight_increase, 1)
+				
 			policy.train(replay_buffer, args.batch_size)
 
 		if done: 

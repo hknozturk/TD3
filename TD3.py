@@ -73,6 +73,7 @@ class TD3(object):
 		max_action,
 		discount=0.99,
 		tau=0.005,
+		per=False,
 		policy_noise=0.2,
 		noise_clip=0.5,
 		policy_freq=2
@@ -89,6 +90,7 @@ class TD3(object):
 		self.max_action = max_action
 		self.discount = discount
 		self.tau = tau
+		self.per = per
 		self.policy_noise = policy_noise
 		self.noise_clip = noise_clip
 		self.policy_freq = policy_freq
@@ -105,7 +107,10 @@ class TD3(object):
 		self.total_it += 1
 
 		# Sample replay buffer 
-		state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
+		if self.per:
+			idxs, state, action, reward, next_state, not_done, weights = replay_buffer.sample(batch_size)
+		else:
+			state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
 
 		with torch.no_grad():
 			# Select action according to policy and add clipped noise
@@ -130,8 +135,16 @@ class TD3(object):
 
 		# Optimize the critic
 		self.critic_optimizer.zero_grad()
-		critic_loss.backward()
+		if self.per:
+			(weights * critic_loss).mean().backward() # Backpropagate importance-weighted minibatch loss
+		else:
+			critic_loss.backward()
 		self.critic_optimizer.step()
+
+		if self.per:
+			# Update priorities of sampled transitions
+			errors = np.abs((current_Q1 - target_Q).detach().cpu().numpy())
+			replay_buffer.update_priorities(idxs, errors) 
 
 		# Delayed policy updates
 		if self.total_it % self.policy_freq == 0:
