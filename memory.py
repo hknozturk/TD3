@@ -113,8 +113,10 @@ class ReplayMemory():
         return tree_idxs, states, actions, rewards, next_states, not_dones, weights
 
     def update_priorities(self, idxs, priorities):
-        priorities = np.power(priorities, self.priority_exponent)
-        for idx, priority in zip(idxs, priorities):
+        # priorities = np.power(priorities, self.priority_exponent)
+        clipped_errors = np.minimum(priorities, self.absolute_error_upper)
+        clipped_errors = np.power(clipped_errors, self.priority_exponent)
+        for idx, priority in zip(idxs, clipped_errors):
             self.tree.update(idx, priority)
 
     def __len__(self):
