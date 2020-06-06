@@ -51,6 +51,8 @@ if __name__ == "__main__":
 	parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
 	parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
 	parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn"t load, "default" uses file_name
+	# Dueling Networks
+	parser.add_argument("--dueling", type=bool, default=False, help="Run experiment with dueling networks")
 	# Prioritized Experience Replay args
 	parser.add_argument("--per", type=bool, default=False, metavar="Prioritized Experience Replay", help="Use experience replay memory or not")
 	parser.add_argument("--memory_capacity", type=int, default=int(1e6), metavar="CAPACITY", help="Experience replay memory capacity")
@@ -92,6 +94,7 @@ if __name__ == "__main__":
 	# Initialize policy
 	if args.policy == "TD3":
 		# Target policy smoothing is scaled wrt the action scale
+		kwargs["dueling"] = args.dueling
 		kwargs["per"] = args.per
 		kwargs["policy_noise"] = args.policy_noise * max_action
 		kwargs["noise_clip"] = args.noise_clip * max_action
