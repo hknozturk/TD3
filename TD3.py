@@ -21,10 +21,10 @@ class Actor(nn.Module):
 
         self.l1 = nn.Linear(state_dim, 256)
         self.l2 = nn.Linear(256, 256)
-        # if self.noise:
-        #     self.l3 = NoisyLinear(256, action_dim)
-        # else:
-        self.l3 = nn.Linear(256, action_dim)
+        if self.noise:
+            self.l3 = NoisyLinear(256, action_dim)
+        else:
+            self.l3 = nn.Linear(256, action_dim)
 
         self.max_action = max_action
 
@@ -33,9 +33,9 @@ class Actor(nn.Module):
         a = F.relu(self.l2(a))
         return self.max_action * torch.tanh(self.l3(a))
 
-    # def reset_noise(self):
-    #     if self.noise:
-            # self.l3.reset_noise()
+    def reset_noise(self):
+        if self.noise:
+            self.l3.reset_noise()
 
 
 class Critic(nn.Module):
@@ -190,7 +190,7 @@ class TD3(object):
         with torch.no_grad():
             # reseet
             if self.noisy:
-                # self.actor_target.reset_noise()
+                self.actor_target.reset_noise()
                 self.critic_target.reset_noise()
             # Select action according to policy and add clipped noise
             noise = (
@@ -261,6 +261,7 @@ class TD3(object):
 
     def reset_noise(self):
         if self.noisy:
+            self.actor.reset_noise()
             self.critic.reset_noise()
 
 
