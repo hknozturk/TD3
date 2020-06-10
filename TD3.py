@@ -15,16 +15,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim, max_action, noise):
+    def __init__(self, state_dim, action_dim, max_action):
         super(Actor, self).__init__()
-        self.noise = noise
 
         self.l1 = nn.Linear(state_dim, 256)
         self.l2 = nn.Linear(256, 256)
-        if self.noise:
-            self.l3 = NoisyLinear(256, action_dim)
-        else:
-            self.l3 = nn.Linear(256, action_dim)
+        # if self.noise:
+        #     self.l3 = NoisyLinear(256, action_dim)
+        # else:
+        self.l3 = nn.Linear(256, action_dim)
 
         self.max_action = max_action
 
@@ -33,9 +32,9 @@ class Actor(nn.Module):
         a = F.relu(self.l2(a))
         return self.max_action * torch.tanh(self.l3(a))
 
-    def reset_noise(self):
-        if self.noise:
-            self.l3.reset_noise()
+    # def reset_noise(self):
+    #     if self.noise:
+    #         self.l3.reset_noise()
 
 
 class Critic(nn.Module):
@@ -49,7 +48,17 @@ class Critic(nn.Module):
         # Q1 architecture
         self.l1 = nn.Linear(state_dim + action_dim, 256)
         self.l2 = nn.Linear(256, 256)
-        if dueling:
+        if dueling and noise:
+            print("dn")
+            # We separate output stream into two streams
+            # The one that calculates V(s)
+            self.l3_1 = nn.Linear(256, 128)
+            self.l4_1 = NoisyLinear(128, 1)
+            # The one that calculates A(s, a) - advantage
+            self.l3_2 = nn.Linear(256, 128)
+            self.l4_2 = NoisyLinear(128, action_dim)
+        elif dueling:
+            print("d")
             # We separate output stream into two streams
             # The one that calculates V(s)
             self.l3_1 = nn.Linear(256, 128)
@@ -58,14 +67,25 @@ class Critic(nn.Module):
             self.l3_2 = nn.Linear(256, 128)
             self.l4_2 = nn.Linear(128, action_dim)
         elif noise:
+            print("n")
             self.l3 = NoisyLinear(256, 1)
         else:
+            print("nothing")
             self.l3 = nn.Linear(256, 1)
 
         # Q2 architecture
         self.l4 = nn.Linear(state_dim + action_dim, 256)
         self.l5 = nn.Linear(256, 256)
-        if dueling:
+        if dueling and noise:
+            # We separate output stream into two streams
+            # The one that calculates V(s)
+            self.l6_1 = nn.Linear(256, 128)
+            self.l7_1 = NoisyLinear(128, 1)
+            # The one that calculates A(s, a) - advantage
+            self.l6_2 = nn.Linear(256, 128)
+            self.l7_2 = NoisyLinear(128, action_dim)
+
+        elif dueling:
             # We separate output stream into two streams
             # The one that calculates V(s)
             self.l6_1 = nn.Linear(256, 128)
@@ -127,7 +147,12 @@ class Critic(nn.Module):
         return q1
 
     def reset_noise(self):
-        if self.noise:
+        if self.noise and self.dueling:
+            self.l4_1.reset_noise()
+            self.l4_2.reset_noise()
+            self.l7_1.reset_noise()
+            self.l7_2.reset_noise()
+        elif self.noise:
             self.l3.reset_noise()
             self.l6.reset_noise()
 
@@ -152,7 +177,7 @@ class TD3(object):
             policy_freq=2
     ):
 
-        self.actor = Actor(state_dim, action_dim, max_action, noisy).to(device)
+        self.actor = Actor(state_dim, action_dim, max_action).to(device)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4)
 
@@ -190,7 +215,7 @@ class TD3(object):
         with torch.no_grad():
             # reseet
             if self.noisy:
-                self.actor_target.reset_noise()
+                # self.actor_target.reset_noise()
                 self.critic_target.reset_noise()
             # Select action according to policy and add clipped noise
             noise = (
@@ -261,7 +286,7 @@ class TD3(object):
 
     def reset_noise(self):
         if self.noisy:
-            self.actor.reset_noise()
+            # self.actor.reset_noise()
             self.critic.reset_noise()
 
 
